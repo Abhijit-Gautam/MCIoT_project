@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Blind Turn Indicator</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body, html {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      overflow: hidden;
+      height: 100vh;
+      background: #0a0a0a;
+    }
+
+    .background {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      background: url('hairpin_background_resized.png') no-repeat center center;
+      background-size: cover;
+      display: grid;
+      grid-template-columns: 1fr 400px;
+      grid-template-rows: auto 1fr auto;
+      gap: 20px;
+      padding: 20px;
+    }
+
+    .background::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.4);
+      z-index: 1;
+    }
+
+    .title {
+      grid-column: 1 / -1;
+      text-align: center;
+      color: #ffffff;
+      font-size: 3.2rem;
+      font-weight: 700;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      text-shadow: 0 4px 20px rgba(0, 0, 0, 0.8);
+      z-index: 1000;
+      position: relative;
+      background: linear-gradient(135deg, #22d3ee 0%, #06b6d4 50%, #0891b2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 10px;
+    }
+
+    .main-content {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 60px;
+      z-index: 1000;
+      position: relative;
+    }
+
+    .led-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 60px;
+      position: relative;
+    }
+
+    .led-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .led-wrapper.led-1 {
+      transform: translateY(-20px);
+    }
+
+    .led-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+    }
+
+    .led-icon {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #4a5568, #2d3748, #1a202c);
+      border: 3px solid #4a5568;
+      box-shadow: 
+        inset 0 -8px 20px rgba(0, 0, 0, 0.6),
+        inset 0 8px 20px rgba(255, 255, 255, 0.1),
+        0 4px 20px rgba(0, 0, 0, 0.5);
+      position: relative;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .led-icon::before {
+      content: '';
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #718096, #4a5568, #2d3748);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .led-icon::after {
+      content: '';
+      position: absolute;
+      top: 15px;
+      left: 25px;
+      width: 20px;
+      height: 15px;
+      border-radius: 50%;
+      background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.3), transparent);
+      transition: all 0.3s ease;
+    }
+
+    .led-icon.on {
+      background: radial-gradient(circle at 30% 30%, #ff4444, #cc0000, #990000);
+      border-color: #ff4444;
+      box-shadow: 
+        inset 0 -8px 20px rgba(0, 0, 0, 0.4),
+        inset 0 8px 20px rgba(255, 100, 100, 0.3),
+        0 0 40px rgba(255, 68, 68, 0.8),
+        0 0 80px rgba(255, 68, 68, 0.4),
+        0 4px 20px rgba(0, 0, 0, 0.5);
+      animation: ledPulse 1.5s infinite alternate;
+    }
+
+    .led-icon.on::before {
+      background: radial-gradient(circle at 30% 30%, #ff6666, #ff4444, #cc0000);
+    }
+
+    .led-icon.on::after {
+      background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.2));
+    }
+
+    @keyframes ledPulse {
+      0% {
+        box-shadow: 
+          inset 0 -8px 20px rgba(0, 0, 0, 0.4),
+          inset 0 8px 20px rgba(255, 100, 100, 0.3),
+          0 0 40px rgba(255, 68, 68, 0.6),
+          0 0 80px rgba(255, 68, 68, 0.3),
+          0 4px 20px rgba(0, 0, 0, 0.5);
+      }
+      100% {
+        box-shadow: 
+          inset 0 -8px 20px rgba(0, 0, 0, 0.4),
+          inset 0 8px 20px rgba(255, 100, 100, 0.3),
+          0 0 60px rgba(255, 68, 68, 1),
+          0 0 120px rgba(255, 68, 68, 0.6),
+          0 4px 20px rgba(0, 0, 0, 0.5);
+      }
+    }
+
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      z-index: 1000;
+      position: relative;
+    }
+
+    .graph-panel {
+      background: rgba(30, 41, 59, 0.95);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(71, 85, 105, 0.6);
+      border-radius: 20px;
+      padding: 25px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+      height: 320px;
+    }
+
+    .panel-title {
+      font-size: 1.2rem;
+      font-weight: 600;
+      color: #f1f5f9;
+      margin-bottom: 20px;
+      text-align: center;
+      position: relative;
+    }
+
+    .panel-title::after {
+      content: '';
+      position: absolute;
+      bottom: -8px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 60px;
+      height: 2px;
+      background: linear-gradient(90deg, #22d3ee, #06b6d4);
+      border-radius: 1px;
+    }
+
+    .chart-container {
+      height: calc(100% - 50px);
+      position: relative;
+    }
+
+    .count-panel {
+      background: rgba(30, 41, 59, 0.95);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(71, 85, 105, 0.6);
+      border-radius: 20px;
+      padding: 25px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+      text-align: center;
+    }
+
+    .count-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 3rem;
+      font-weight: 600;
+      background: linear-gradient(135deg, #22d3ee 0%, #06b6d4 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 8px;
+      line-height: 1;
+    }
+
+    .count-label {
+      font-size: 0.9rem;
+      color: #cbd5e1;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-weight: 500;
+    }
+
+    @media (max-width: 1024px) {
+      .background {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr auto;
+      }
+      
+      .title {
+        font-size: 2.5rem;
+      }
+      
+      .led-container {
+        flex-direction: row;
+        gap: 40px;
+      }
+
+      .led-wrapper.led-1 {
+        transform: translateY(-10px);
+      }
+      
+      .sidebar {
+        grid-row: 3;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .title {
+        font-size: 2rem;
+        letter-spacing: 2px;
+      }
+      
+      .led-icon {
+        width: 60px;
+        height: 60px;
+      }
+      
+      .led-icon::before {
+        width: 45px;
+        height: 45px;
+      }
+      
+      .count-value {
+        font-size: 2.2rem;
+      }
+      
+      .background {
+        padding: 15px;
+        gap: 15px;
+      }
+
+      .led-wrapper.led-1 {
+        transform: translateY(-5px);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="background">
+    <h1 class="title">Blind Turn Indicator</h1>
+
+    <div class="main-content">
+      <div class="led-container">
+        <div class="led-wrapper led-1">
+          <div class="led-label">LED 1</div>
+          <div id="left" class="led-icon"></div>
+        </div>
+        <div class="led-wrapper">
+          <div class="led-label">LED 2</div>
+          <div id="right" class="led-icon"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar">
+      <div class="graph-panel">
+        <h3 class="panel-title">Traffic Flow Rate</h3>
+        <div class="chart-container">
+          <canvas id="avgChart"></canvas>
+        </div>
+      </div>
+
+      <div class="count-panel">
+        <div class="count-value" id="total">0</div>
+        <div class="count-label">Total Vehicles Passed</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let totalCount = 0;
+    let sessionStart = Date.now();
+    let leftActive = false;
+    let rightActive = false;
+
+    let leftTimer = null;
+    let rightTimer = null;
+
+    let avgData = [];
+    let timeLabels = [];
+
+    const ctx = document.getElementById('avgChart').getContext('2d');
+    const avgChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: timeLabels,
+        datasets: [{
+          label: 'Avg Vehicles/hr',
+          data: avgData,
+          fill: true,
+          borderColor: '#22d3ee',
+          backgroundColor: 'rgba(34, 211, 238, 0.15)',
+          borderWidth: 3,
+          tension: 0.4,
+          pointRadius: 4,
+          pointBackgroundColor: '#22d3ee',
+          pointBorderColor: '#ffffff',
+          pointBorderWidth: 2,
+          pointHoverRadius: 6,
+          pointHoverBackgroundColor: '#06b6d4',
+          pointHoverBorderColor: '#ffffff',
+          pointHoverBorderWidth: 3
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            labels: {
+              color: '#f1f5f9',
+              font: {
+                family: 'Inter',
+                size: 12,
+                weight: '500'
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            title: {
+              display: true,
+              text: 'Time (min)',
+              color: '#cbd5e1',
+              font: {
+                family: 'Inter',
+                size: 11,
+                weight: '500'
+              }
+            },
+            ticks: {
+              color: '#94a3b8',
+              font: {
+                family: 'Inter',
+                size: 10
+              }
+            },
+            grid: {
+              color: 'rgba(71, 85, 105, 0.3)',
+              drawBorder: false
+            }
+          },
+          y: {
+            title: {
+              display: true,
+              text: 'Avg/hr',
+              color: '#cbd5e1',
+              font: {
+                family: 'Inter',
+                size: 11,
+                weight: '500'
+              }
+            },
+            ticks: {
+              color: '#94a3b8',
+              font: {
+                family: 'Inter',
+                size: 10
+              }
+            },
+            grid: {
+              color: 'rgba(71, 85, 105, 0.3)',
+              drawBorder: false
+            },
+            beginAtZero: true
+          }
+        },
+        interaction: {
+          intersect: false,
+          mode: 'index'
+        }
+      }
+    });
+
+    function updateStats() {
+      const hours = (Date.now() - sessionStart) / (1000 * 60 * 60);
+      const minutes = ((Date.now() - sessionStart) / (1000 * 60)).toFixed(1);
+      const avg = +(totalCount / hours).toFixed(2);
+
+      if (timeLabels.length > 20) {
+        timeLabels.shift();
+        avgData.shift();
+      }
+      timeLabels.push(`${minutes}m`);
+      avgData.push(avg);
+
+      avgChart.update('none');
+    }
+
+    const socket = io();
+    socket.on("status", ({ left, right }) => {
+      const leftEl = document.getElementById("left");
+      const rightEl = document.getElementById("right");
+
+      // SWAPPED: Now left input controls right LED, right input controls left LED
+      // Implement 5 second glow logic with timers
+
+      if (right) {
+        // Turn on left LED (LED 1) for 5 seconds
+        leftEl.classList.add("on");
+        if (leftTimer) clearTimeout(leftTimer);
+        leftTimer = setTimeout(() => {
+          leftEl.classList.remove("on");
+        }, 5000);
+      }
+
+      if (left) {
+        // Turn on right LED (LED 2) for 5 seconds
+        rightEl.classList.add("on");
+        if (rightTimer) clearTimeout(rightTimer);
+        rightTimer = setTimeout(() => {
+          rightEl.classList.remove("on");
+        }, 5000);
+      }
+
+      // Increment counter only when LED starts glowing (every 5 seconds glow counts as 1)
+      // To avoid multiple increments during the 5 seconds, increment only when input changes from false to true
+
+      if (left && !leftActive) {
+        totalCount++;
+        leftActive = true;
+        document.getElementById("total").innerText = totalCount;
+        updateStats();
+      }
+
+      if (!left) {
+        leftActive = false;
+      }
+
+      if (right && !rightActive) {
+        totalCount++;
+        rightActive = true;
+        document.getElementById("total").innerText = totalCount;
+        updateStats();
+      }
+
+      if (!right) {
+        rightActive = false;
+      }
+    });
+  </script>
+</body>
+</html>
